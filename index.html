@@ -1,0 +1,1568 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#05060b" />
+<title>激活授权密钥 · KeyGate</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700;800&family=Exo+2:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+
+<style>
+/* ============================================================
+   TOKENS — 语义化，组件内不出现裸色值
+   ============================================================ */
+:root{
+  --bg:#05060b;
+  --bg-2:#0a0c16;
+
+  --glass:rgba(18,21,38,.72);
+  --glass-hi:rgba(255,255,255,.055);
+  --glass-lo:rgba(255,255,255,.014);
+
+  --line:rgba(255,255,255,.09);
+  --line-hi:rgba(255,255,255,.18);
+
+  --text:#eef1ff;
+  --text-dim:#a3abd0;      /* 6.4:1 on --bg */
+  --text-mute:#8b94b8;     /* 6.2:1 on --bg */
+
+  --violet:#7b5cff;
+  --violet-soft:#8b6dff;
+  --cyan:#2ee6f5;
+  --gold:#ffc76b;
+  --green:#35e08f;
+  --red:#ff5d73;
+
+  --ring:#9c86ff;
+
+  --c-bg-1:rgba(123,92,255,.30);
+  --c-bg-2:rgba(46,230,245,.22);
+
+  --r-card:26px;
+  --r-cell:11px;
+  --r-btn:14px;
+
+  --font-display:'Orbitron', ui-sans-serif, system-ui, sans-serif;
+  --font-body:'Exo 2', ui-sans-serif, system-ui, -apple-system, 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --font-mono:'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-spring:cubic-bezier(.2,.9,.2,1);
+}
+
+/* ============================================================
+   BASE
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-body);
+  font-size:16px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  overflow-x:hidden;
+  min-height:100svh;
+}
+
+/* 统一可见焦点环（键盘用户） */
+:where(button,a,input,[tabindex]):focus-visible{
+  outline:2px solid var(--ring);
+  outline-offset:3px;
+  border-radius:8px;
+}
+
+/* ============================================================
+   AMBIENT LAYERS
+   ============================================================ */
+#starfield{
+  position:fixed; inset:0; width:100%; height:100%;
+  pointer-events:none; z-index:0;
+}
+
+.aurora{
+  position:fixed; inset:-20%; z-index:0; pointer-events:none;
+  filter:blur(70px); opacity:.65;
+}
+.aurora .a{
+  position:absolute; border-radius:50%;
+  mix-blend-mode:screen;
+}
+.aurora .a1{
+  width:46vmax; height:46vmax; left:8%; top:4%;
+  background:radial-gradient(circle at 40% 40%, var(--c-bg-1), transparent 62%);
+  animation:drift1 26s ease-in-out infinite alternate;
+}
+.aurora .a2{
+  width:40vmax; height:40vmax; right:4%; bottom:2%;
+  background:radial-gradient(circle at 60% 55%, var(--c-bg-2), transparent 62%);
+  animation:drift2 32s ease-in-out infinite alternate;
+}
+.aurora .a3{
+  width:32vmax; height:32vmax; left:32%; top:44%;
+  background:radial-gradient(circle at 50% 50%, rgba(255,199,107,.16), transparent 65%);
+  animation:drift3 38s ease-in-out infinite alternate;
+}
+@keyframes drift1{to{transform:translate3d(9%,7%,0) scale(1.16);}}
+@keyframes drift2{to{transform:translate3d(-11%,-8%,0) scale(1.1);}}
+@keyframes drift3{to{transform:translate3d(6%,-12%,0) scale(.9);}}
+
+.grid-floor{
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background-image:
+    linear-gradient(rgba(139,109,255,.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(139,109,255,.055) 1px, transparent 1px);
+  background-size:64px 64px;
+  mask-image:radial-gradient(ellipse 78% 62% at 50% 46%, #000 20%, transparent 78%);
+  -webkit-mask-image:radial-gradient(ellipse 78% 62% at 50% 46%, #000 20%, transparent 78%);
+  opacity:.7;
+}
+
+.vignette{
+  position:fixed; inset:0; z-index:1; pointer-events:none;
+  background:radial-gradient(ellipse 60% 60% at 50% 44%, transparent 30%, rgba(3,4,9,.72) 82%, #03040a 100%);
+}
+
+.grain{
+  position:fixed; inset:0; z-index:1; pointer-events:none;
+  opacity:.05; mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='.9'/></svg>");
+}
+
+/* ============================================================
+   STAGE
+   ============================================================ */
+.stage{
+  position:relative; z-index:2;
+  min-height:100svh;
+  display:grid; place-items:center;
+  padding:clamp(16px,4vw,48px);
+  perspective:1400px;
+}
+
+/* ============================================================
+   CARD
+   ============================================================ */
+@property --beam{syntax:'<angle>';initial-value:0deg;inherits:false;}
+
+.card{
+  --mx:50%; --my:0%;
+  position:relative;
+  width:100%;
+  max-width:520px;
+  padding:clamp(26px,4.4vw,42px) clamp(20px,4vw,44px) clamp(22px,3.6vw,34px);
+  border-radius:var(--r-card);
+  background:
+    linear-gradient(180deg, rgba(24,27,48,.86), rgba(10,12,22,.92));
+  border:1px solid var(--line);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.07) inset,
+    0 -80px 120px -80px rgba(123,92,255,.55) inset,
+    0 40px 90px -40px rgba(0,0,0,.95),
+    0 0 0 1px rgba(0,0,0,.5);
+  backdrop-filter:blur(26px) saturate(150%);
+  -webkit-backdrop-filter:blur(26px) saturate(150%);
+  overflow:hidden;
+  transform-style:preserve-3d;
+  transform:
+    rotateX(var(--rx,0deg))
+    rotateY(var(--ry,0deg))
+    translateZ(0);
+  transition:transform .5s var(--ease-out), box-shadow .5s var(--ease-out), border-color .4s;
+  will-change:transform;
+}
+
+/* 边缘流动光束 */
+.card::before{
+  content:'';
+  position:absolute; inset:0; border-radius:inherit;
+  padding:1.2px;
+  background:conic-gradient(from var(--beam),
+    rgba(255,255,255,0) 0deg,
+    rgba(123,92,255,0) 34deg,
+    rgba(123,92,255,.85) 66deg,
+    rgba(46,230,245,.95) 92deg,
+    rgba(255,199,107,.85) 116deg,
+    rgba(255,255,255,0) 152deg,
+    rgba(255,255,255,0) 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite:exclude;
+  animation:beamSpin 7.5s linear infinite;
+  pointer-events:none;
+  z-index:4;
+  opacity:.9;
+}
+@keyframes beamSpin{to{--beam:360deg;}}
+
+/* 鼠标聚光 */
+.card .spot{
+  position:absolute; inset:0; border-radius:inherit; pointer-events:none; z-index:0;
+  background:radial-gradient(280px circle at var(--mx) var(--my), rgba(139,109,255,.16), transparent 68%);
+  opacity:0; transition:opacity .45s;
+}
+.stage:hover .card .spot{opacity:1;}
+
+/* 全息扫掠 */
+.sweep{
+  position:absolute; left:-30%; right:-30%; top:-10%; height:70%;
+  pointer-events:none; z-index:3;
+  background:linear-gradient(180deg,
+    transparent 0%,
+    rgba(255,255,255,.035) 36%,
+    rgba(180,200,255,.10) 50%,
+    rgba(255,255,255,.035) 64%,
+    transparent 100%);
+  transform:translateY(-140%) rotate(-9deg);
+  animation:sweepDown 7s cubic-bezier(.5,0,.5,1) infinite;
+  animation-delay:2.2s;
+  filter:blur(1px);
+}
+@keyframes sweepDown{
+  0%{transform:translateY(-140%) rotate(-9deg);opacity:0;}
+  12%{opacity:1;}
+  46%{transform:translateY(190%) rotate(-9deg);opacity:1;}
+  58%,100%{transform:translateY(190%) rotate(-9deg);opacity:0;}
+}
+
+/* 验证中：加速 */
+.card.is-validating .sweep{animation-duration:1.15s;}
+.card.is-validating::before{animation-duration:1.6s;}
+
+/* 关闭退出 */
+.stage.is-closed .card{
+  opacity:0;
+  transform:translateY(26px) scale(.92);
+  filter:blur(12px);
+  pointer-events:none;
+}
+.stage.is-closed{pointer-events:none;}
+
+/* 错误抖动 */
+.card.is-error{
+  animation:shake .52s cubic-bezier(.36,.07,.19,.97);
+  border-color:rgba(255,93,115,.5);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.07) inset,
+    0 0 0 1px rgba(255,93,115,.28),
+    0 40px 90px -40px rgba(0,0,0,.95),
+    0 0 90px -30px rgba(255,93,115,.55);
+}
+@keyframes shake{
+  10%,90%{transform:translateX(-3px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));}
+  20%,80%{transform:translateX(5px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));}
+  30%,50%,70%{transform:translateX(-8px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));}
+  40%,60%{transform:translateX(8px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));}
+}
+
+/* 成功态 */
+.card.is-success{
+  border-color:rgba(53,224,143,.42);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.08) inset,
+    0 0 0 1px rgba(53,224,143,.22),
+    0 40px 90px -40px rgba(0,0,0,.95),
+    0 0 110px -34px rgba(53,224,143,.5);
+}
+.card.is-success::before{
+  background:conic-gradient(from var(--beam),
+    rgba(53,224,143,0),
+    rgba(53,224,143,.85) 70deg,
+    rgba(46,230,245,.9) 96deg,
+    rgba(255,199,107,.7) 118deg,
+    rgba(53,224,143,0) 156deg);
+}
+
+/* ============================================================
+   CLOSE BUTTON
+   ============================================================ */
+.close{
+  position:absolute; top:14px; right:14px; z-index:6;
+  width:44px; height:44px;
+  display:grid; place-items:center;
+  border-radius:50%;
+  border:1px solid transparent;
+  background:transparent;
+  color:var(--text-mute);
+  cursor:pointer;
+  transition:color .2s, background .2s, border-color .2s, transform .2s;
+}
+.close:hover{
+  color:var(--text);
+  background:rgba(255,255,255,.06);
+  border-color:var(--line);
+  transform:rotate(90deg);
+}
+.close:active{transform:rotate(90deg) scale(.92);}
+.close svg{width:17px;height:17px;}
+
+/* ============================================================
+   PANES
+   ============================================================ */
+.card-body{position:relative; z-index:2; display:grid;}
+.pane{
+  grid-area:1 / 1;
+  transition:opacity .5s var(--ease-out), transform .65s var(--ease-out), filter .5s;
+}
+.pane[data-hidden="true"]{
+  opacity:0; transform:scale(.955) translateY(-10px); filter:blur(8px);
+  pointer-events:none;
+  visibility:hidden;
+  transition:opacity .35s, transform .45s, filter .35s, visibility 0s .45s;
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+.head{text-align:center; margin-bottom:clamp(20px,3vw,28px);}
+
+.emblem{
+  position:relative;
+  width:84px; height:84px;
+  margin:0 auto clamp(14px,2vw,18px);
+  display:grid; place-items:center;
+}
+.emblem .core{
+  position:relative; z-index:2;
+  width:64px; height:64px;
+  border-radius:19px;
+  display:grid; place-items:center;
+  background:linear-gradient(160deg, rgba(139,109,255,.30), rgba(46,230,245,.12) 70%, rgba(255,255,255,.03));
+  border:1px solid rgba(160,140,255,.4);
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,.4),
+    0 10px 30px -12px rgba(123,92,255,.9),
+    inset 0 1px 0 rgba(255,255,255,.28),
+    inset 0 -14px 22px -16px rgba(46,230,245,.9);
+  color:#dcd7ff;
+  animation:corePulse 3.6s ease-in-out infinite;
+}
+@keyframes corePulse{
+  0%,100%{box-shadow:0 0 0 1px rgba(0,0,0,.4),0 10px 30px -12px rgba(123,92,255,.9),inset 0 1px 0 rgba(255,255,255,.28),inset 0 -14px 22px -16px rgba(46,230,245,.9);}
+  50%{box-shadow:0 0 0 1px rgba(0,0,0,.4),0 10px 44px -10px rgba(123,92,255,1),0 0 34px -6px rgba(46,230,245,.55),inset 0 1px 0 rgba(255,255,255,.34),inset 0 -14px 22px -16px rgba(46,230,245,1);}
+}
+.emblem .core svg{width:29px;height:29px;}
+
+.emblem .ring{
+  position:absolute; inset:0; border-radius:50%;
+  border:1px dashed rgba(139,109,255,.35);
+  animation:orbit 14s linear infinite;
+}
+.emblem .ring::after{
+  content:''; position:absolute; top:-3px; left:50%;
+  width:6px; height:6px; margin-left:-3px;
+  border-radius:50%;
+  background:var(--cyan);
+  box-shadow:0 0 12px 2px rgba(46,230,245,.9);
+}
+.emblem .ring.r2{
+  inset:8px;
+  border-color:rgba(46,230,245,.22);
+  animation-direction:reverse;
+  animation-duration:20s;
+}
+.emblem .ring.r2::after{background:var(--gold);box-shadow:0 0 12px 2px rgba(255,199,107,.85);width:4px;height:4px;margin-left:-2px;}
+@keyframes orbit{to{transform:rotate(360deg);}}
+
+/* 成功时徽章变绿 */
+.card.is-success .emblem .core{
+  background:linear-gradient(160deg, rgba(53,224,143,.32), rgba(46,230,245,.14) 70%, rgba(255,255,255,.03));
+  border-color:rgba(53,224,143,.5);
+  color:#c9ffe6;
+  animation:none;
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,.4),
+    0 10px 44px -10px rgba(53,224,143,.95),
+    0 0 44px -8px rgba(53,224,143,.55),
+    inset 0 1px 0 rgba(255,255,255,.3);
+}
+
+.title{
+  margin:0 0 8px;
+  font-family:var(--font-display);
+  font-size:clamp(19px,4.6vw,25px);
+  font-weight:700;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  background:linear-gradient(180deg,#ffffff 20%, #b8b0ff 78%, #8b8fc4 100%);
+  -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 18px rgba(139,109,255,.55));
+}
+.sub{
+  margin:0;
+  font-size:clamp(13px,3.4vw,14.5px);
+  color:var(--text-dim);
+  letter-spacing:.01em;
+}
+
+/* ============================================================
+   KEYPAD
+   ============================================================ */
+.keypad-wrap{
+  position:relative;
+  margin-bottom:12px;
+  border-radius:16px;
+  padding:2px;
+  transition:box-shadow .35s;
+}
+.keypad-wrap:focus-within{
+  box-shadow:0 0 0 1px rgba(46,230,245,.22), 0 0 44px -16px rgba(46,230,245,.7);
+}
+
+.keypad-grid{
+  /* 8 格 + 8 道格间距 + 中间分隔(2 道间距) = 8cw + 10cg，用 Grid 自动摊分，永不溢出 */
+  --cell-h:clamp(38px, 11vw, 52px);
+  --cell-gap:clamp(4px, 1.4vw, 8px);
+  width:100%;
+  max-width:416px;            /* 42px×8 + 8px×10 = 416，桌面端锁定设计尺寸 */
+  margin-inline:auto;
+  display:flex;
+  flex-direction:column;
+  gap:var(--cell-gap);
+}
+.krow{
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
+  align-items:center;
+  gap:var(--cell-gap);
+  width:100%;
+  perspective:320px;
+}
+.kgroup{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:var(--cell-gap);
+}
+.kdash{
+  width:calc(var(--cell-gap) * 2); height:1.5px;
+  display:block;
+  background:linear-gradient(90deg, transparent, rgba(163,171,208,.45), transparent);
+  border-radius:2px;
+}
+
+.cell{
+  position:relative;
+  width:100%;                 /* 由 Grid 列宽决定，永不超过容器 */
+  min-width:0;
+  height:var(--cell-h);
+  border-radius:var(--r-cell);
+  display:grid; place-items:center;
+  background:linear-gradient(180deg, var(--glass-hi), var(--glass-lo));
+  border:1px solid var(--line);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.07),
+    inset 0 -12px 20px -18px rgba(123,92,255,.7);
+  transition:border-color .28s, box-shadow .28s, background .28s;
+  transform-style:preserve-3d;
+}
+.cell[data-filled="1"]{
+  border-color:rgba(139,109,255,.46);
+  background:linear-gradient(180deg, rgba(139,109,255,.13), rgba(255,255,255,.015));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.13),
+    0 6px 22px -14px rgba(123,92,255,1),
+    inset 0 -12px 20px -18px rgba(139,109,255,.95);
+}
+.cell.is-active{
+  border-color:rgba(46,230,245,.7);
+  background:linear-gradient(180deg, rgba(46,230,245,.11), rgba(255,255,255,.015));
+  box-shadow:
+    0 0 0 1px rgba(46,230,245,.28),
+    0 0 26px -6px rgba(46,230,245,.7),
+    inset 0 0 20px -8px rgba(46,230,245,.65);
+}
+/* 空占位：内嵌点 */
+.cell:not([data-filled="1"])::before{
+  content:'';
+  width:5px; height:5px; border-radius:50%;
+  background:rgba(163,171,208,.28);
+  transition:opacity .2s, transform .2s;
+}
+.cell[data-filled="1"]::before{opacity:0;transform:scale(0);}
+
+.cell .ch{
+  position:absolute;
+  font-family:var(--font-display);
+  font-weight:700;
+  font-size:clamp(18px,4.6vw,22px);
+  line-height:1;
+  color:#fff;
+  text-shadow:0 0 14px rgba(139,109,255,.95), 0 0 34px rgba(123,92,255,.55);
+  will-change:transform;
+}
+.cell .caret{
+  position:absolute;
+  width:2px; height:22px;
+  border-radius:2px;
+  background:var(--cyan);
+  box-shadow:0 0 12px 1px rgba(46,230,245,.95);
+  opacity:0;
+  transform:scaleY(.3);
+  transition:opacity .15s, transform .15s;
+}
+.cell.is-active .caret{
+  opacity:1;
+  transform:scaleY(1);
+  animation:blink 1.05s steps(2,start) infinite;
+}
+@keyframes blink{50%{opacity:0;}}
+
+/* 成功态字符 */
+.card.is-success .cell{
+  border-color:rgba(53,224,143,.45);
+  background:linear-gradient(180deg, rgba(53,224,143,.12), rgba(255,255,255,.015));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 0 22px -10px rgba(53,224,143,.9);
+}
+.card.is-success .cell .ch{
+  text-shadow:0 0 14px rgba(53,224,143,.95),0 0 30px rgba(53,224,143,.5);
+}
+.card.is-success .cell .caret{opacity:0;}
+
+/* 错误态字符 */
+.card.is-error .cell{
+  border-color:rgba(255,93,115,.6);
+  background:linear-gradient(180deg, rgba(255,93,115,.12), rgba(255,255,255,.01));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.1), 0 0 24px -10px rgba(255,93,115,.95);
+}
+.card.is-error .cell .ch{text-shadow:0 0 14px rgba(255,93,115,.95);}
+
+/* 隐形输入层 */
+.key-input{
+  position:absolute; inset:0;
+  width:100%; height:100%;
+  padding:0; border:0; outline:0;
+  background:transparent;
+  color:transparent;
+  caret-color:transparent;
+  font-size:16px;              /* 防 iOS 缩放 */
+  letter-spacing:0;
+  cursor:text;
+  z-index:3;
+  border-radius:16px;
+  text-shadow:none;
+  -webkit-text-fill-color:transparent;
+}
+.key-input::selection{background:rgba(46,230,245,.3);}
+
+/* ============================================================
+   HINTS / ALERT
+   ============================================================ */
+.hint-row{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:10px; flex-wrap:wrap;
+  min-height:44px;
+}
+/* 极窄屏：提示与演示按钮各占一行并左对齐，避免居中换行造成的理解困难 */
+@media (max-width:430px){
+  .hint-row{flex-direction:column; align-items:stretch; gap:2px;}
+  .hint{font-size:12px;}
+  .demo-chip{
+    align-self:flex-start;
+    margin-right:0;
+    margin-left:-12px;
+    padding:0 12px;
+    letter-spacing:0;
+  }
+}
+.hint{
+  display:inline-flex; align-items:center; gap:7px;
+  margin:0;                       /* <p> 默认 margin 会额外撑高 25px */
+  font-size:12.5px;
+  color:var(--text-mute);
+  letter-spacing:.01em;
+}
+.hint svg{width:13px;height:13px;flex:0 0 auto;opacity:.8;}
+
+.demo-chip{
+  display:inline-flex; align-items:center; gap:7px;
+  min-height:44px;
+  padding:0 12px;
+  margin-right:-12px;
+  border:1px solid transparent;
+  border-radius:10px;
+  background:transparent;
+  color:var(--text-mute);
+  font-family:var(--font-mono);
+  font-size:12px;                 /* 不低于 12px 正文下限 */
+  letter-spacing:.02em;
+  cursor:pointer;
+  transition:color .2s, background .2s, border-color .2s;
+}
+.demo-chip:hover{
+  color:var(--cyan);
+  background:rgba(46,230,245,.06);
+  border-color:rgba(46,230,245,.2);
+}
+.demo-chip b{font-weight:600;color:inherit;}
+
+.alert{
+  display:flex; gap:11px; align-items:flex-start;
+  margin:0 0 14px;
+  padding:13px 14px;
+  border-radius:13px;
+  background:linear-gradient(180deg, rgba(255,93,115,.10), rgba(255,93,115,.04));
+  border:1px solid rgba(255,93,115,.30);
+  animation:alertIn .4s var(--ease-spring) both;
+}
+.alert[hidden]{display:none;}
+@keyframes alertIn{from{opacity:0;transform:translateY(-8px) scale(.98);}to{opacity:1;transform:none;}}
+
+.alert .ico{
+  flex:0 0 auto; width:18px; height:18px; margin-top:1px;
+  color:var(--red);
+}
+.alert .body{min-width:0;}
+.alert strong{
+  display:block;
+  font-size:13.5px; font-weight:600; color:#ffd5dc;
+  margin-bottom:2px;
+}
+.alert span{
+  display:block;
+  font-size:12.5px; line-height:1.45; color:#f0b7c0;
+}
+
+/* ============================================================
+   CTA
+   ============================================================ */
+.cta{
+  position:relative;
+  width:100%;
+  min-height:52px;
+  margin-top:6px;
+  padding:0 20px;
+  display:inline-flex; align-items:center; justify-content:center; gap:10px;
+  border:0;
+  border-radius:var(--r-btn);
+  font-family:var(--font-body);
+  font-size:15px; font-weight:700; letter-spacing:.09em;
+  color:#0b0620;
+  cursor:pointer;
+  overflow:hidden;
+  isolation:isolate;
+  background:linear-gradient(116deg,#7b5cff 0%,#8b6dff 34%,#59c9ff 76%,#2ee6f5 100%);
+  box-shadow:
+    0 12px 34px -12px rgba(123,92,255,.9),
+    0 2px 0 rgba(255,255,255,.28) inset,
+    0 -3px 14px -6px rgba(0,0,0,.5) inset;
+  transition:transform .18s var(--ease-spring), box-shadow .3s, filter .3s, opacity .3s;
+}
+.cta:hover:not(:disabled){
+  filter:brightness(1.07) saturate(1.06);
+  box-shadow:
+    0 16px 44px -12px rgba(123,92,255,1),
+    0 0 34px -6px rgba(46,230,245,.6),
+    0 2px 0 rgba(255,255,255,.34) inset;
+}
+.cta:active:not(:disabled){transform:scale(.975);}
+.cta:disabled{cursor:not-allowed;opacity:.7;filter:saturate(.55);}
+.cta::after{
+  content:'';
+  position:absolute; inset:0; z-index:-1;
+  background:linear-gradient(108deg, transparent 32%, rgba(255,255,255,.55) 47%, transparent 62%);
+  transform:translateX(-130%);
+  animation:sheen 4.2s cubic-bezier(.4,0,.2,1) infinite;
+}
+@keyframes sheen{
+  0%,58%{transform:translateX(-130%);}
+  88%,100%{transform:translateX(130%);}
+}
+.cta .label{position:relative;z-index:1;}
+.cta .spin{
+  width:16px;height:16px;border-radius:50%;
+  border:2px solid rgba(11,6,32,.28);
+  border-top-color:#0b0620;
+  animation:spin .7s linear infinite;
+  display:none;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+.cta.is-busy .spin{display:block;}
+.cta.is-busy{letter-spacing:.05em;}
+
+/* 成功态按钮 */
+.cta.is-ghost{
+  background:linear-gradient(116deg,#22c47a,#35e08f 40%,#5ef0b4 100%);
+  color:#032014;
+}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+.foot{
+  margin-top:18px;
+  padding-top:16px;
+  border-top:1px solid rgba(255,255,255,.06);
+  display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap;
+  font-size:12px; color:var(--text-mute); letter-spacing:.02em;
+}
+.foot .dot{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--green);
+  box-shadow:0 0 8px 1px rgba(53,224,143,.9);
+  animation:beat 2.4s ease-in-out infinite;
+}
+@keyframes beat{0%,100%{opacity:.45;transform:scale(.85);}50%{opacity:1;transform:scale(1);}}
+.foot .sep{opacity:.35;}
+.foot a{
+  color:var(--text-dim); text-decoration:none; border-bottom:1px solid rgba(163,171,208,.28);
+  padding-bottom:1px; transition:color .2s, border-color .2s;
+}
+.foot a:hover{color:var(--cyan);border-color:var(--cyan);}
+
+/* ============================================================
+   SUCCESS PANEL
+   ============================================================ */
+.success{text-align:center;padding-top:6px;}
+.seal{
+  position:relative;
+  width:96px;height:96px;
+  margin:0 auto 18px;
+  display:grid;place-items:center;
+}
+.seal .halo{
+  position:absolute; inset:0; border-radius:50%;
+  border:1px solid rgba(53,224,143,.4);
+  animation:haloOut 2.6s ease-out infinite;
+}
+.seal .halo.h2{animation-delay:.85s;}
+@keyframes haloOut{
+  0%{transform:scale(.6);opacity:0;}
+  30%{opacity:.9;}
+  100%{transform:scale(1.5);opacity:0;}
+}
+.seal .disc{
+  position:relative;z-index:2;
+  width:74px;height:74px;border-radius:50%;
+  display:grid;place-items:center;
+  background:radial-gradient(circle at 50% 34%, rgba(53,224,143,.42), rgba(53,224,143,.10) 62%, transparent 78%);
+  border:1px solid rgba(53,224,143,.55);
+  box-shadow:0 0 44px -8px rgba(53,224,143,.85), inset 0 1px 0 rgba(255,255,255,.3);
+}
+.seal svg{width:34px;height:34px;color:#baffdf;}
+.seal svg path{
+  stroke-dasharray:34;
+  stroke-dashoffset:34;
+  animation:drawCheck .7s .16s var(--ease-out) forwards;
+}
+@keyframes drawCheck{to{stroke-dashoffset:0;}}
+
+.success h2{
+  margin:0 0 6px;
+  font-family:var(--font-display);
+  font-size:clamp(17px,4.2vw,21px);
+  font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+  background:linear-gradient(180deg,#ffffff,#9ff5cc);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 18px rgba(53,224,143,.5));
+}
+.success .lede{
+  margin:0 0 20px;
+  font-size:13.5px;color:var(--text-dim);
+}
+
+.meta{
+  margin:0 0 22px;
+  padding:6px 0;
+  border-radius:14px;
+  background:linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.012));
+  border:1px solid var(--line);
+}
+.meta-row{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  padding:10px 15px;
+  font-size:13px;
+}
+.meta-row + .meta-row{border-top:1px solid rgba(255,255,255,.055);}
+.meta-row dt{color:var(--text-mute);font-size:12.5px;letter-spacing:.02em;}
+.meta-row dd{
+  margin:0;
+  font-family:var(--font-mono);
+  font-size:12.5px;
+  color:#d7ddf5;
+  letter-spacing:.03em;
+  text-align:right;
+  word-break:break-all;
+}
+.meta-row dd.ok{color:var(--green);}
+
+/* ============================================================
+   REOPEN
+   ============================================================ */
+.reopen{
+  position:fixed; z-index:5;
+  left:50%; top:50%;
+  transform:translate(-50%,-50%) scale(.92);
+  opacity:0; pointer-events:none;
+  display:inline-flex;align-items:center;gap:9px;
+  min-height:48px; padding:0 20px;
+  border-radius:14px;
+  border:1px solid rgba(139,109,255,.45);
+  background:rgba(20,22,40,.85);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  color:var(--text);
+  font-family:var(--font-body);
+  font-size:13.5px;font-weight:600;letter-spacing:.04em;
+  cursor:pointer;
+  box-shadow:0 20px 50px -20px rgba(0,0,0,.9), 0 0 40px -14px rgba(123,92,255,.8);
+  transition:opacity .4s, transform .5s var(--ease-spring), border-color .2s;
+}
+.reopen svg{width:16px;height:16px;color:var(--violet-soft);}
+.stage.is-closed ~ .reopen{
+  opacity:1; pointer-events:auto;
+  transform:translate(-50%,-50%) scale(1);
+}
+.reopen:hover{border-color:rgba(46,230,245,.6);}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+/* 窄屏/触屏：2×8 重排为 4×4 —— 每行恰为一组 4 位，格位从 31px 放大到 70px+ */
+@media (max-width:620px){
+  .keypad-grid{
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0,1fr));
+    gap:clamp(6px, 2vw, 9px);
+    /* 4 列下若铺满宽屏会变成 101px 的扁条，锁上限让格位比例始终接近 1.4:1 */
+    width:100%;
+    max-width:min(100%, 340px);
+    margin-inline:auto;
+  }
+  .krow,.kgroup{display:contents;}      /* 抹平分组层级，16 格按 DOM 顺序自然排成 4 行 */
+  .kdash{display:none;}                 /* 每行即一组，分隔线不再需要 */
+  .cell{height:clamp(46px, 13.5vw, 58px); border-radius:12px;}
+  .cell .ch{font-size:clamp(19px, 6.2vw, 27px);}
+  .cell .caret{height:22px;}
+}
+
+@media (max-width:480px){
+  .emblem{width:72px;height:72px;}
+  .emblem .core{width:56px;height:56px;border-radius:16px;}
+  .emblem .core svg{width:25px;height:25px;}
+  .card{max-width:420px;}
+}
+
+/* 矮屏（如 375×667、横屏机）压缩纵向节奏，避免出现滚动 */
+@media (max-height:730px){
+  .stage{padding:12px;}
+  .emblem{width:62px;height:62px;margin-bottom:10px;}
+  .emblem .core{width:50px;height:50px;border-radius:14px;}
+  .emblem .core svg{width:23px;height:23px;}
+  .head{margin-bottom:14px;}
+  .title{margin-bottom:5px;}
+  .keypad-grid{gap:6px;}
+  .cell{height:clamp(40px, 11.5vw, 50px);}
+  .foot{margin-top:12px;padding-top:10px;}
+}
+
+/* ============================================================
+   REDUCED MOTION
+   ============================================================ */
+@media (prefers-reduced-motion:reduce){
+  .card::before,.sweep,.aurora .a,.emblem .ring,.emblem .core,
+  .cta::after,.seal .halo,.foot .dot,.cell .caret{animation:none !important;}
+  .card{transition:none;}
+  .pane{transition:opacity .2s;}
+  .seal svg path{animation:none;stroke-dashoffset:0;}
+  #starfield{display:none;}
+  .card{transform:none !important;}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ 环境层 ============ -->
+<canvas id="starfield" aria-hidden="true"></canvas>
+<div class="aurora" aria-hidden="true">
+  <span class="a a1"></span><span class="a a2"></span><span class="a a3"></span>
+</div>
+<div class="grid-floor" aria-hidden="true"></div>
+<div class="vignette" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<!-- ============ 弹窗 ============ -->
+<main class="stage" id="stage">
+  <section class="card" id="card"
+           role="dialog" aria-modal="true"
+           aria-labelledby="dlgTitle" aria-describedby="dlgDesc">
+    <div class="spot" aria-hidden="true"></div>
+    <div class="sweep" aria-hidden="true"></div>
+
+    <button class="close" id="closeBtn" type="button" aria-label="关闭激活窗口">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+
+    <div class="card-body">
+
+      <!-- ---------- PANE 1：验证 ---------- -->
+      <div class="pane" id="paneForm">
+        <header class="head">
+          <div class="emblem" aria-hidden="true">
+            <span class="ring"></span>
+            <span class="ring r2"></span>
+            <div class="core">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2.6 4.4 6.1v5.7c0 4.9 3.2 8.5 7.6 9.9 4.4-1.4 7.6-5 7.6-9.9V6.1L12 2.6Z"/>
+                <circle cx="12" cy="10.6" r="2.15"/>
+                <path d="M12 12.75v3.1"/>
+              </svg>
+            </div>
+          </div>
+          <h1 class="title" id="dlgTitle">Activate License</h1>
+          <p class="sub" id="dlgDesc">输入 16 位授权密钥，解锁 Pro 工作区全部模块</p>
+        </header>
+
+        <form id="form" novalidate autocomplete="off">
+          <!-- 错误摘要（失败提交后出现并接收焦点） -->
+          <div class="alert" id="alert" role="alert" tabindex="-1" hidden>
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9"/><path d="M12 7.6v5.1"/><path d="M12 16.4v.2"/>
+            </svg>
+            <div class="body">
+              <strong id="alertTitle">密钥未通过验证</strong>
+              <span id="alertText">请检查是否输错字符。</span>
+            </div>
+          </div>
+
+          <!-- 卡密输入 -->
+          <div class="keypad-wrap" id="keypadWrap">
+            <div class="keypad-grid" id="keypadGrid" aria-hidden="true"></div>
+            <input
+              class="key-input"
+              id="keyInput"
+              name="license-key"
+              type="text"
+              inputmode="text"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="characters"
+              spellcheck="false"
+              maxlength="24"
+              aria-label="激活密钥，共 16 位大写字母与数字"
+              aria-describedby="keyHelp"
+            />
+          </div>
+
+          <div class="hint-row">
+            <p class="hint" id="keyHelp">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+                <rect x="4" y="10.5" width="16" height="10" rx="2.4"/><path d="M8 10.5V7.6a4 4 0 0 1 8 0v2.9"/>
+              </svg>
+              密钥仅用于本次激活，本地不留存
+            </p>
+            <button class="demo-chip" id="demoBtn" type="button" aria-label="填入演示密钥 KRM9-4XQ2-7FTP-2W5N">
+              演示 · <b>KRM9-4XQ2-7FTP-2W5N</b>
+            </button>
+          </div>
+
+          <button class="cta" id="submitBtn" type="submit">
+            <span class="spin" aria-hidden="true"></span>
+            <span class="label" id="submitLabel">立即激活</span>
+          </button>
+        </form>
+
+        <footer class="foot">
+          <span class="dot" aria-hidden="true"></span>
+          <span>AES-256 加密通道</span>
+          <span class="sep" aria-hidden="true">·</span>
+          <span>未收到密钥？<a href="#" id="supportLink">联系支持</a></span>
+        </footer>
+      </div>
+
+      <!-- ---------- PANE 2：成功 ---------- -->
+      <div class="pane" id="paneSuccess" data-hidden="true" aria-hidden="true">
+        <div class="success">
+          <div class="seal" aria-hidden="true">
+            <span class="halo"></span>
+            <span class="halo h2"></span>
+            <div class="disc">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4.5 12.6 9.6 17.6 19.5 7"/>
+              </svg>
+            </div>
+          </div>
+
+          <h2 id="successTitle">Access Granted</h2>
+          <p class="lede" id="successLede">授权已写入本机，Pro 工作区即刻可用。</p>
+
+          <dl class="meta">
+            <div class="meta-row"><dt>密钥</dt><dd id="metaKey">—</dd></div>
+            <div class="meta-row"><dt>套餐</dt><dd id="metaPlan">—</dd></div>
+            <div class="meta-row"><dt>有效期至</dt><dd id="metaExp" class="ok">—</dd></div>
+          </dl>
+
+          <button class="cta is-ghost" id="enterBtn" type="button">
+            <span class="label">进入 Pro 工作区</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</main>
+
+<button class="reopen" id="reopenBtn" type="button">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <rect x="4" y="10.5" width="16" height="10" rx="2.4"/><path d="M8 10.5V7.6a4 4 0 0 1 8 0v2.9"/>
+  </svg>
+  重新打开激活窗口
+</button>
+
+<noscript>
+  <style>
+    .keypad-grid{display:none !important;}
+    .key-input{position:static;opacity:1;color:#fff;-webkit-text-fill-color:#fff;height:52px;border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:0 14px;text-align:center;letter-spacing:.3em;font-family:monospace;background:rgba(255,255,255,.04);}
+  </style>
+</noscript>
+
+<script>
+(function(){
+  'use strict';
+
+  /* =========================================================
+     0. 常量与工具
+     ========================================================= */
+  const KEY_LEN = 16;
+
+  const VALID_KEYS = new Map([
+    ['KRM94XQ27FTP2W5N', { plan: 'Pro · 年度授权', exp: '2027-11-26' }],
+    ['NOVA8Z3K5QLD6M1R', { plan: 'Team · 月度授权', exp: '2026-12-26' }]
+  ]);
+
+  const $ = (id) => document.getElementById(id);
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+  const mq = (q) => {
+    try { return window.matchMedia ? window.matchMedia(q) : { matches: false }; }
+    catch (e) { return { matches: false }; }
+  };
+  const REDUCE = mq('(prefers-reduced-motion: reduce)').matches;
+  const FINE_POINTER = mq('(hover: hover) and (pointer: fine)').matches;
+
+  /* =========================================================
+     1. 元素引用
+     ========================================================= */
+  const stage     = $('stage');
+  const card      = $('card');
+  const form      = $('form');
+  const keyInput  = $('keyInput');
+  const keypadGrid= $('keypadGrid');
+  const keypadWrap= $('keypadWrap');
+  const alertBox  = $('alert');
+  const alertTitle= $('alertTitle');
+  const alertText = $('alertText');
+  const submitBtn = $('submitBtn');
+  const submitLabel = $('submitLabel');
+  const demoBtn   = $('demoBtn');
+  const closeBtn  = $('closeBtn');
+  const reopenBtn = $('reopenBtn');
+  const paneForm  = $('paneForm');
+  const paneSuccess = $('paneSuccess');
+  const enterBtn  = $('enterBtn');
+
+  let cells = [];
+  let locked = false;
+
+  /* =========================================================
+     2. 构建卡密格
+     ========================================================= */
+  function buildKeypad(){
+    keypadGrid.textContent = '';
+    cells = [];
+    for (let row = 0; row < 2; row++){
+      const rowEl = document.createElement('div');
+      rowEl.className = 'krow';
+      for (let g = 0; g < 2; g++){
+        if (g === 1){
+          const dash = document.createElement('span');
+          dash.className = 'kdash';
+          dash.setAttribute('aria-hidden', 'true');
+          rowEl.appendChild(dash);
+        }
+        const group = document.createElement('div');
+        group.className = 'kgroup';
+        for (let c = 0; c < 4; c++){
+          const idx = row * 8 + g * 4 + c;
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          cell.dataset.i = String(idx);
+          cell.dataset.filled = '0';
+          const ch = document.createElement('span');
+          ch.className = 'ch';
+          const caret = document.createElement('i');
+          caret.className = 'caret';
+          caret.setAttribute('aria-hidden', 'true');
+          cell.appendChild(ch);
+          cell.appendChild(caret);
+          group.appendChild(cell);
+          cells.push(cell);
+        }
+        rowEl.appendChild(group);
+      }
+      keypadGrid.appendChild(rowEl);
+    }
+  }
+
+  function rawVal(){
+    return keyInput.value.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, KEY_LEN);
+  }
+
+  function popChar(el){
+    if (!el || !el.animate || REDUCE) return;
+    el.animate([
+      { transform: 'scale(.35) rotateX(-82deg)', opacity: 0,    filter: 'brightness(2.6)' },
+      { transform: 'scale(1.16) rotateX(0deg)',  opacity: 1,    filter: 'brightness(1.7)', offset: .58 },
+      { transform: 'scale(1) rotateX(0deg)',     opacity: 1,    filter: 'brightness(1)' }
+    ], { duration: 340, easing: 'cubic-bezier(.2,.9,.2,1)' });
+  }
+
+  function render(){
+    const raw = rawVal();
+    const focused = document.activeElement === keyInput;
+    const activeIdx = clamp(raw.length, 0, KEY_LEN - 1);
+
+    for (let i = 0; i < cells.length; i++){
+      const cell = cells[i];
+      const chEl = cell.querySelector('.ch');
+      const ch = raw[i] || '';
+
+      if (chEl.textContent !== ch){
+        chEl.textContent = ch;
+        if (ch) popChar(chEl);
+      }
+      cell.dataset.filled = ch ? '1' : '0';
+      const isActive = focused && !locked && i === activeIdx && !card.classList.contains('is-success');
+      cell.classList.toggle('is-active', isActive);
+    }
+  }
+
+  /* 输入事件：清洗 → 归位光标 → 重绘 */
+  keyInput.addEventListener('input', () => {
+    const cleaned = rawVal();
+    if (keyInput.value !== cleaned) keyInput.value = cleaned;
+    const pos = cleaned.length;
+    try { keyInput.setSelectionRange(pos, pos); } catch (e) {}
+    clearAlert();
+    card.classList.remove('is-error');
+    render();
+  });
+
+  keyInput.addEventListener('focus', render);
+  keyInput.addEventListener('blur', () => setTimeout(render, 0));
+
+  keypadWrap.addEventListener('click', (e) => {
+    if (e.target === keyInput) return;
+    keyInput.focus();
+    const pos = rawVal().length;
+    try { keyInput.setSelectionRange(pos, pos); } catch (err) {}
+    render();
+  });
+
+  /* =========================================================
+     3. 提示 / 错误
+     ========================================================= */
+  function clearAlert(){
+    alertBox.hidden = true;
+  }
+
+  function showAlert(title, text, focusIt){
+    alertTitle.textContent = title;
+    alertText.textContent = text;
+    alertBox.hidden = false;
+    if (focusIt) {
+      /* UX：失败后把焦点移到错误摘要，便于键盘与读屏用户定位 */
+      alertBox.focus({ preventScroll: true });
+    }
+  }
+
+  /* =========================================================
+     4. 提交状态
+     ========================================================= */
+  function setBusy(busy){
+    submitBtn.disabled = busy;
+    submitBtn.classList.toggle('is-busy', busy);
+    submitLabel.textContent = busy ? '正在校验密钥' : '立即激活';
+    keyInput.setAttribute('aria-busy', busy ? 'true' : 'false');
+  }
+
+  /* =========================================================
+     5. 提交 / 验证
+     ========================================================= */
+  let busy = false;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (busy || locked) return;
+
+    const raw = rawVal();
+
+    /* 5.1 前端前置校验 */
+    if (raw.length === 0){
+      card.classList.remove('is-error');
+      void card.offsetWidth;
+      card.classList.add('is-error');
+      showAlert('尚未填写激活密钥', '请输入邮件里收到的 16 位密钥，或点击下方"演示"一键填入。', true);
+      keyInput.focus();
+      return;
+    }
+    if (raw.length < KEY_LEN){
+      card.classList.remove('is-error');
+      void card.offsetWidth;
+      card.classList.add('is-error');
+      showAlert('密钥长度不足',
+        `当前 ${raw.length} 位，还需要 ${KEY_LEN - raw.length} 位字符。完整密钥为 4 组，每组 4 位。`, true);
+      return;
+    }
+
+    /* 5.2 走"网络" */
+    busy = true;
+    locked = true;
+    clearAlert();
+    card.classList.remove('is-error');
+    card.classList.add('is-validating');
+    setBusy(true);
+    render();
+
+    await wait(REDUCE ? 600 : 1500);
+
+    card.classList.remove('is-validating');
+    setBusy(false);
+    busy = false;
+
+    const hit = VALID_KEYS.get(raw);
+
+    if (hit){
+      succeed(raw, hit);
+    } else {
+      locked = false;
+      fail(raw);
+    }
+  });
+
+  /* =========================================================
+     6. 成功
+     ========================================================= */
+  function succeed(raw, info){
+    card.classList.remove('is-error');
+    card.classList.add('is-success');
+
+    $('metaKey').textContent  = raw.replace(/(.{4})(?=.)/g, '$1-');
+    $('metaPlan').textContent = info.plan;
+    $('metaExp').textContent  = info.exp;
+    $('successLede').textContent = `授权已写入本机，${info.plan} 有效期至 ${info.exp}。`;
+
+    /* 面板切换 */
+    setTimeout(() => {
+      paneForm.dataset.hidden = 'true';
+      paneForm.setAttribute('aria-hidden', 'true');
+      paneSuccess.dataset.hidden = 'false';
+      paneSuccess.removeAttribute('aria-hidden');
+      setTimeout(() => enterBtn.focus({ preventScroll: true }), 380);
+    }, REDUCE ? 60 : 420);
+
+    render();
+    emitBurst();
+  }
+
+  /* =========================================================
+     7. 失败
+     ========================================================= */
+  function fail(raw){
+    card.classList.remove('is-success');
+    card.classList.add('is-error');
+    render();
+
+    showAlert('密钥不存在或已失效',
+      '请逐位核对后重试。密钥区分数字 0 与字母 O、数字 1 与字母 I。', true);
+
+    setTimeout(() => {
+      card.classList.remove('is-error');
+      render();
+    }, 900);
+
+    /* 保留用户输入 —— 不清空、不重置表单 */
+  }
+
+  /* =========================================================
+     8. 演示密钥一键填充
+     ========================================================= */
+  demoBtn.addEventListener('click', () => {
+    if (busy) return;
+    const demo = 'KRM94XQ27FTP2W5N';
+    keyInput.value = '';
+    keyInput.focus();
+    clearAlert();
+    card.classList.remove('is-error', 'is-success');
+    /* 逐字符填充，制造"打字机"节奏 */
+    let i = 0;
+    const step = REDUCE ? 0 : 34;
+    (function type(){
+      if (i >= demo.length){ render(); return; }
+      keyInput.value = demo.slice(0, ++i);
+      render();
+      setTimeout(type, step);
+    })();
+  });
+
+  /* =========================================================
+     9. 打开 / 关闭
+     ========================================================= */
+  function closeDialog(){
+    if (stage.classList.contains('is-closed')) return;
+    stage.classList.add('is-closed');
+    card.setAttribute('aria-hidden', 'true');
+    closeBtn.setAttribute('tabindex', '-1');
+    setTimeout(() => reopenBtn.focus({ preventScroll: true }), REDUCE ? 0 : 460);
+  }
+
+  function openDialog(){
+    if (!stage.classList.contains('is-closed')) return;
+    stage.classList.remove('is-closed');
+    card.removeAttribute('aria-hidden');
+    closeBtn.removeAttribute('tabindex');
+    setTimeout(() => {
+      if (card.classList.contains('is-success')) enterBtn.focus({ preventScroll: true });
+      else keyInput.focus({ preventScroll: true });
+    }, REDUCE ? 0 : 420);
+  }
+
+  closeBtn.addEventListener('click', closeDialog);
+  reopenBtn.addEventListener('click', openDialog);
+  enterBtn.addEventListener('click', () => {
+    enterBtn.classList.add('is-busy');
+    enterBtn.querySelector('.label').textContent = '正在进入…';
+    setTimeout(() => {
+      enterBtn.classList.remove('is-busy');
+      enterBtn.querySelector('.label').textContent = '已进入工作区';
+    }, 1200);
+  });
+  $('supportLink').addEventListener('click', (e) => e.preventDefault());
+
+  /* =========================================================
+     10. 键盘：Esc 关闭 + Tab 焦点陷阱
+     ========================================================= */
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape'){
+      if (!stage.classList.contains('is-closed')) { e.preventDefault(); closeDialog(); }
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    if (stage.classList.contains('is-closed')) return;
+    if (card.getAttribute('aria-hidden') === 'true') return;
+
+    const focusables = Array.from(
+      card.querySelectorAll('button, input, [href], [tabindex]:not([tabindex="-1"])')
+    ).filter(el => !el.disabled && el.offsetParent !== null && el.getAttribute('tabindex') !== '-1');
+
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last  = focusables[focusables.length - 1];
+    const act   = document.activeElement;
+
+    if (!card.contains(act)) { e.preventDefault(); first.focus(); return; }
+    if (e.shiftKey && act === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && act === last) { e.preventDefault(); first.focus(); }
+  });
+
+  /* =========================================================
+     11. 3D 倾斜 + 聚光跟随（仅精确指针）
+     ========================================================= */
+  if (FINE_POINTER && !REDUCE){
+    let raf = 0;
+    let tx = 0, ty = 0, mx = 50, my = 0;
+
+    stage.addEventListener('mousemove', (e) => {
+      const r = card.getBoundingClientRect();
+      const px = (e.clientX - r.left) / r.width;
+      const py = (e.clientY - r.top) / r.height;
+      mx = (px * 100).toFixed(2);
+      my = (py * 100).toFixed(2);
+      ty = ((px - .5) * -2 * 5.5);
+      tx = ((py - .5) *  2 * 5.5);
+
+      if (!raf) raf = requestAnimationFrame(apply);
+    });
+
+    function apply(){
+      raf = 0;
+      card.style.setProperty('--mx', mx + '%');
+      card.style.setProperty('--my', my + '%');
+      card.style.setProperty('--rx', tx.toFixed(2) + 'deg');
+      card.style.setProperty('--ry', ty.toFixed(2) + 'deg');
+    }
+
+    stage.addEventListener('mouseleave', () => {
+      card.style.setProperty('--rx', '0deg');
+      card.style.setProperty('--ry', '0deg');
+    });
+
+    /* 磁吸按钮 */
+    [submitBtn, enterBtn].forEach((btn) => {
+      btn.addEventListener('mousemove', (e) => {
+        const r = btn.getBoundingClientRect();
+        const dx = (e.clientX - (r.left + r.width / 2)) / r.width;
+        const dy = (e.clientY - (r.top + r.height / 2)) / r.height;
+        btn.style.transform = `translate(${(dx * 6).toFixed(2)}px, ${(dy * 4).toFixed(2)}px)`;
+      });
+      btn.addEventListener('mouseleave', () => { btn.style.transform = ''; });
+    });
+  }
+
+  /* =========================================================
+     12. 星尘 / 爆发粒子
+     ========================================================= */
+  const canvas = $('starfield');
+  const ctx = canvas ? canvas.getContext('2d') : null;
+  /* 无 canvas 2D 支持（部分 WebView / 受限环境）时，整层粒子系统静默降级，不影响主流程 */
+  const FX = !!ctx;
+  let W = 0, H = 0, DPR = 1;
+  let dust = [];
+  let sparks = [];
+  let mouse = { x: -9999, y: -9999 };
+  let t0 = performance.now();
+
+  const PALETTE = [
+    'rgba(139,109,255,',
+    'rgba(46,230,245,',
+    'rgba(255,199,107,',
+    'rgba(220,227,255,'
+  ];
+
+  function buildDust(){
+    const count = REDUCE ? 0 : Math.round(clamp((W * H) / 24000, 22, 74));
+    dust = [];
+    for (let i = 0; i < count; i++){
+      const c = PALETTE[(Math.random() * PALETTE.length) | 0];
+      dust.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        vx: (Math.random() - .5) * .18,
+        vy: -0.06 - Math.random() * .22,
+        r: .6 + Math.random() * 1.7,
+        a: .18 + Math.random() * .5,
+        phase: Math.random() * Math.PI * 2,
+        speed: .6 + Math.random() * 1.4,
+        color: c
+      });
+    }
+  }
+
+  function resize(){
+    if (!FX) return;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width  = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    buildDust();
+  }
+
+  function emitBurst(){
+    if (REDUCE || !FX) return;
+    const r = card.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height * 0.26;
+    const colors = ['rgba(53,224,143,', 'rgba(46,230,245,', 'rgba(255,199,107,', 'rgba(255,255,255,'];
+    for (let i = 0; i < 46; i++){
+      const ang = (Math.PI * 2 * i) / 46 + Math.random() * .35;
+      const sp  = 1.4 + Math.random() * 4.6;
+      sparks.push({
+        x: cx, y: cy,
+        vx: Math.cos(ang) * sp,
+        vy: Math.sin(ang) * sp - .6,
+        r: .8 + Math.random() * 2.2,
+        life: 1,
+        decay: .008 + Math.random() * .011,
+        color: colors[(Math.random() * colors.length) | 0]
+      });
+    }
+  }
+
+  function frame(now){
+    if (!FX) return;
+    const t = (now - t0) / 1000;
+    ctx.clearRect(0, 0, W, H);
+
+    /* --- 星尘 --- */
+    for (let i = 0; i < dust.length; i++){
+      const p = dust[i];
+
+      /* 鼠标斥力 */
+      const dx = p.x - mouse.x;
+      const dy = p.y - mouse.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < 16000 && d2 > 1){
+        const d = Math.sqrt(d2);
+        const f = (1 - d / 126) * .55;
+        p.vx += (dx / d) * f * .55;
+        p.vy += (dy / d) * f * .55;
+      }
+
+      p.vx *= .982; p.vy *= .982;
+      p.x += p.vx; p.y += p.vy;
+
+      if (p.y < -12) { p.y = H + 10; p.x = Math.random() * W; }
+      if (p.x < -12) p.x = W + 10;
+      if (p.x > W + 12) p.x = -10;
+
+      const flick = .55 + .45 * Math.sin(t * p.speed + p.phase);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = p.color + (p.a * flick).toFixed(3) + ')';
+      ctx.fill();
+    }
+
+    /* --- 爆发火花 --- */
+    for (let i = sparks.length - 1; i >= 0; i--){
+      const s = sparks[i];
+      s.vy += .035;
+      s.vx *= .988;
+      s.vy *= .988;
+      s.x += s.vx;
+      s.y += s.vy;
+      s.life -= s.decay;
+      if (s.life <= 0){ sparks.splice(i, 1); continue; }
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r * s.life, 0, Math.PI * 2);
+      ctx.fillStyle = s.color + (s.life * .9).toFixed(3) + ')';
+      ctx.fill();
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener('resize', resize);
+  window.addEventListener('pointermove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; }, { passive: true });
+  window.addEventListener('pointerleave', () => { mouse.x = -9999; mouse.y = -9999; });
+
+  /* =========================================================
+     13. 启动
+     ========================================================= */
+  buildKeypad();
+  resize();
+  requestAnimationFrame(frame);
+  render();
+
+  /* 桌面端自动聚焦输入；触屏端不自动弹键盘 */
+  if (FINE_POINTER) {
+    setTimeout(() => keyInput.focus({ preventScroll: true }), 780);
+  }
+
+  console.log('%cKeyGate', 'font:700 14px monospace;color:#8b6dff', '演示密钥：KRM9-4XQ2-7FTP-2W5N / NOVA-8Z3K-5QLD-6M1R');
+})();
+</script>
+</body>
+</html>
